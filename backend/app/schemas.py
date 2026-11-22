@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Annotated
 
-from pydantic import BaseModel, StringConstraints, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from .security import normalize_phone, now_utc
 
@@ -35,7 +35,7 @@ class ProfileUpdate(BaseModel):
     gender: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
     city: ProfileText
     income_range: ProfileText
-    interests: list[InterestText]
+    interests: list[InterestText] = Field(min_length=1)
 
     @field_validator("date_of_birth")
     @classmethod

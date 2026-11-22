@@ -604,6 +604,7 @@ function MemberGuard({ children, complete = false }) {
 function Profile() {
   const { member, setMember } = useContext(SessionContext);
   const navigate = useNavigate();
+  const interestChoices = [...new Set([...INTERESTS, ...(member.interests || [])])];
   const [form, setForm] = useState({
     name: member.name || "",
     date_of_birth: member.date_of_birth || "",
@@ -776,7 +777,7 @@ function Profile() {
               Choose one or more. You can always change these later.
             </p>
             <div className="choice-grid">
-              {INTERESTS.map((interest) => (
+              {interestChoices.map((interest) => (
                 <label
                   className={`choice ${form.interests.includes(interest) ? "choice-selected" : ""}`}
                   key={interest}

@@ -75,6 +75,13 @@ def test_tagged_signup_profile_and_logout(make_client):
     assert future_birth_date.status_code == 422
     assert client.get("/api/member/me").json()["profile_complete"] is False
 
+    empty_interests = client.put(
+        "/api/member/profile", json={**profile, "interests": []},
+    )
+    assert empty_interests.status_code == 422
+    assert empty_interests.json()["detail"][0]["loc"] == ["body", "interests"]
+    assert client.get("/api/member/me").json()["profile_complete"] is False
+
     saved = client.put("/api/member/profile", json=profile)
     assert saved.status_code == 200, saved.text
     me = client.get("/api/member/me")
@@ -87,6 +94,12 @@ def test_tagged_signup_profile_and_logout(make_client):
             assert set(saved_member[field]) == set(value)
         else:
             assert saved_member[field] == value
+
+    cleared_interests = client.put(
+        "/api/member/profile", json={**profile, "interests": []},
+    )
+    assert cleared_interests.status_code == 422
+    assert client.get("/api/member/me").json() == saved_member
 
     assert client.post("/api/auth/logout").status_code == 204
     assert client.get("/api/member/me").status_code == 401

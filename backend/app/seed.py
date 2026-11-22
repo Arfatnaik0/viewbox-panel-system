@@ -43,7 +43,7 @@ def seed() -> None:
             )
             db.add(member)
             db.flush()
-            for name in ("Food", "Shopping"):
+            for name in ("Food & beverages", "Shopping"):
                 interest = db.scalar(select(Interest).where(Interest.name == name))
                 if interest is None:
                     interest = Interest(name=name)
