@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -60,6 +60,7 @@ class Referral(Base):
             "referrer_member_id IS NULL OR referrer_member_id != referred_member_id",
             name="ck_referrals_distinct_members",
         ),
+        UniqueConstraint("participation_id", name="uq_referrals_participation_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -68,6 +69,10 @@ class Referral(Base):
     claimed_name: Mapped[str | None] = mapped_column(String(120))
     verification_status: Mapped[str] = mapped_column(String(20))
     stage: Mapped[str | None] = mapped_column(String(20))
+    participation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("participations.id", name="fk_referrals_participation_id")
+    )
+    failure_reason: Mapped[str | None] = mapped_column(String(500))
 
 
 class Interest(Base):
