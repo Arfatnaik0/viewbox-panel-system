@@ -6,6 +6,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { api } from "./api.js";
+import { GENDERS, INCOMES, RULE_FIELDS } from "./profile-options.js";
 import {
   Field,
   formatDate,
@@ -16,6 +17,8 @@ import {
   useDebounced,
   useResource,
 } from "./portal-ui.jsx";
+
+const REFERRAL_REASON_MAX_LENGTH = 500;
 
 export function Respondents() {
   const [params, setParams] = useSearchParams();
@@ -350,8 +353,7 @@ function ClaimReview({ member, onAction, busy }) {
             className="textarea"
             id="claim-reason"
             required
-            minLength={3}
-            maxLength={1000}
+            maxLength={REFERRAL_REASON_MAX_LENGTH}
             rows="2"
             value={rejectionReason}
             onChange={(event) => setRejectionReason(event.target.value)}
@@ -363,6 +365,17 @@ function ClaimReview({ member, onAction, busy }) {
       </form>
     </section>
   );
+}
+
+function optionLabel(options, value) {
+  return options.find(([key]) => key === value)?.[1] ?? value;
+}
+
+function ruleValues({ field, values }) {
+  if (field === "age") return `${values[0]} to ${values[1]} years`;
+  const options =
+    field === "gender" ? GENDERS : field === "income_range" ? INCOMES : [];
+  return values.map((value) => optionLabel(options, value)).join(", ");
 }
 
 function Participation({ participation, onAction, busy }) {
@@ -393,6 +406,17 @@ function Participation({ participation, onAction, busy }) {
       <p className="field-help">
         Application #{participation.id} · Survey #{participation.survey_id}
       </p>
+      <p className="muted">{participation.eligibility_reason}</p>
+      {participation.rules.length > 0 && (
+        <ul className="muted">
+          {participation.rules.map((rule) => (
+            <li key={rule.field}>
+              {optionLabel(RULE_FIELDS, rule.field)} ({rule.mode}):{" "}
+              {ruleValues(rule)}
+            </li>
+          ))}
+        </ul>
+      )}
       {participation.fit_at && (
         <p className="field-help">
           Fit recorded: {formatDate(participation.fit_at, true)}
@@ -465,6 +489,10 @@ function Participation({ participation, onAction, busy }) {
 
 export function RespondentDetail() {
   const { id } = useParams();
+  return <RespondentDetailPage key={id} id={id} />;
+}
+
+function RespondentDetailPage({ id }) {
   const location = useLocation();
   const resource = useResource(`/admin/respondents/${encodeURIComponent(id)}`);
   const [busy, setBusy] = useState(false);
@@ -481,7 +509,7 @@ export function RespondentDetail() {
       resource.reload();
     } catch (err) {
       setError(err.message);
-      resource.reload();
+      if (err.status === 409) resource.reload();
     } finally {
       setBusy(false);
     }
@@ -529,6 +557,26 @@ export function RespondentDetail() {
                       <dt>Profile</dt>
                       <dd>
                         {member.profile_complete ? "Complete" : "Needs details"}
+                      </dd>
+                    </div>
+                    <div className="detail-item">
+                      <dt>Date of birth</dt>
+                      <dd>
+                        {member.date_of_birth
+                          ? formatDate(member.date_of_birth)
+                          : "Not provided"}
+                      </dd>
+                    </div>
+                    <div className="detail-item">
+                      <dt>Gender</dt>
+                      <dd>
+                        {optionLabel(GENDERS, member.gender) || "Not provided"}
+                      </dd>
+                    </div>
+                    <div className="detail-item">
+                      <dt>Monthly income (INR)</dt>
+                      <dd>
+                        {optionLabel(INCOMES, member.income_range) || "Not provided"}
                       </dd>
                     </div>
                   </dl>
@@ -606,8 +654,7 @@ export function RespondentDetail() {
                                 id="referral-failure"
                                 rows="3"
                                 required
-                                minLength={3}
-                                maxLength={1000}
+                                maxLength={REFERRAL_REASON_MAX_LENGTH}
                                 value={failureReason}
                                 onChange={(event) =>
                                   setFailureReason(event.target.value)

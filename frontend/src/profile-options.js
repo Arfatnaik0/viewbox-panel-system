@@ -19,3 +19,10 @@ export const INCOMES = [
   ["over_100000", "Above ₹1,00,000"],
   ["prefer_not_to_say", "Prefer not to say"],
 ];
+
+export const RULE_FIELDS = [
+  ["age", "Age range"],
+  ["city", "City"],
+  ["gender", "Gender"],
+  ["income_range", "Monthly income (INR)"],
+];

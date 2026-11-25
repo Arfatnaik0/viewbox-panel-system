@@ -1,12 +1,12 @@
 import csv
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from io import StringIO
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 from sqlalchemy import String, case, cast, distinct, func, or_, select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from .db import lock_for_write
 from .dependencies import CurrentMember, CurrentStaff, Database
@@ -14,6 +14,7 @@ from .models import Member, Referral, Source
 from .schemas import SourceSummary
 from .security import api_error, now_utc
 from .survey_models import Participation, Survey
+from .surveys import RuleBody, survey_rule_summary
 
 
 router = APIRouter(prefix="/api", tags=["operations"])
@@ -68,11 +69,16 @@ class StaffParticipation(BaseModel):
     survey_id: int
     survey_title: str
     eligibility_status: str
+    eligibility_reason: str
+    rules: list[RuleBody]
     fit_at: datetime | None
     completed_at: datetime | None
 
 
 class RespondentDetail(Respondent):
+    date_of_birth: date | None
+    gender: str | None
+    income_range: str | None
     participations: list[StaffParticipation]
 
 
@@ -216,24 +222,31 @@ def respondent_detail(member_id: int, db: Database, _staff: CurrentStaff) -> Res
     row = db.execute(respondent_query().where(Member.id == member_id)).one_or_none()
     if row is None:
         raise api_error(404, "member_not_found", "That respondent does not exist.")
+    member = row[0]
     participations = db.execute(
-        select(Participation, Survey.title)
+        select(Participation, Survey)
         .join(Survey, Survey.id == Participation.survey_id)
+        .options(selectinload(Survey.rules))
         .where(Participation.member_id == member_id)
         .order_by(Participation.applied_at.desc(), Participation.id.desc())
     )
     return RespondentDetail(
         **respondent_summary(*row).model_dump(),
+        date_of_birth=member.date_of_birth,
+        gender=member.gender,
+        income_range=member.income_range,
         participations=[
             StaffParticipation(
                 id=participation.id,
                 survey_id=participation.survey_id,
-                survey_title=title,
+                survey_title=survey.title,
                 eligibility_status=participation.eligibility_status,
+                eligibility_reason=participation.eligibility_reason,
+                rules=[survey_rule_summary(rule) for rule in survey.rules],
                 fit_at=participation.fit_at.replace(tzinfo=UTC) if participation.fit_at else None,
                 completed_at=participation.completed_at.replace(tzinfo=UTC) if participation.completed_at else None,
             )
-            for participation, title in participations
+            for participation, survey in participations
         ],
     )
 

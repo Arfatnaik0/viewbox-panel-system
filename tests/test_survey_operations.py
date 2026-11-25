@@ -69,6 +69,18 @@ def test_publish_preview_and_quota_are_separate(make_client):
     assert rejected["eligibility"]["reason"]
 
 
+def test_scheduled_survey_is_hidden_from_members(make_client):
+    admin = staff_client(make_client, DEMO_ADMIN)
+    member = make_client()
+    sign_in(member, DEMO_MEMBER_PHONE)
+
+    opens = datetime.now(UTC) + timedelta(days=1)
+    survey = create_survey(admin, opens_at=opens.isoformat())
+    path = f"/api/member/surveys/{survey['id']}"
+    assert member.get(path).status_code == 404
+    assert member.post(f"{path}/apply").status_code == 404
+
+
 def test_strict_failure_takes_priority_over_waitlist(make_client):
     admin = staff_client(make_client, DEMO_ADMIN)
     member = make_client()
@@ -79,11 +91,16 @@ def test_strict_failure_takes_priority_over_waitlist(make_client):
     assert result["participation"]["eligibility_status"] == "waitlisted"
     assert result["eligibility"]["reason"]
 
-    strict = {"field": "age", "mode": "strict", "values": [18, 19]}
-    strict_id = create_survey(admin, title="Strict age study", rules=[flexible, strict])["id"]
+    strict_age = {"field": "age", "mode": "strict", "values": [18, 19]}
+    strict_gender = {"field": "gender", "mode": "strict", "values": ["male"]}
+    strict_id = create_survey(admin, rules=[flexible, strict_age, strict_gender])["id"]
     result = apply(member, strict_id)
     assert result["eligibility"]["status"] == "rejected"
     assert result["participation"] is None
+    reason = result["eligibility"]["reason"]
+    assert "ages 18 to 19" in reason
+    assert "genders: male" in reason
+    assert "Pune" not in reason
 
 
 def test_staff_milestones_update_referrer_and_cool_off(make_client):
@@ -104,8 +121,10 @@ def test_staff_milestones_update_referrer_and_cool_off(make_client):
     assert "X" in lead["phone_masked"].upper()
     assert DEMO_REFERRED_PHONE not in str(lead)
 
-    first = create_survey(admin, title="First study")["id"]
-    second = create_survey(admin, title="Second study")["id"]
+    age_rule = {"field": "age", "mode": "strict", "values": [18, 65]}
+    city_rule = {"field": "city", "mode": "strict", "values": ["Pune"]}
+    first = create_survey(admin, title="First study", rules=[age_rule])["id"]
+    second = create_survey(admin, title="Second study", rules=[city_rule])["id"]
     participation = apply(member, first)["participation"]["id"]
     path = f"/api/admin/participations/{participation}"
     assert staff.post(f"{path}/complete").status_code in (409, 422)
@@ -114,12 +133,18 @@ def test_staff_milestones_update_referrer_and_cool_off(make_client):
     ok(staff.post(f"{path}/complete"), 204)
     assert ok(referrer.get("/api/member/referrals"))[0]["stage"] == "completed"
     details = ok(staff.get(f"/api/admin/respondents/{referred['id']}"))
+    for field in ("date_of_birth", "gender", "income_range"):
+        assert details[field] == referred[field]
     [completed] = details["participations"]
+    assert completed["rules"] == [age_rule]
+    assert completed["eligibility_reason"] == "Your profile meets the survey requirements."
     assert datetime.fromisoformat(completed["completed_at"]).utcoffset() == timedelta(0)
 
     blocked = apply(member, second)
     assert blocked["participation"] is None
     assert blocked["eligibility"]["status"] == "rejected"
+    assert "cool-off" in blocked["eligibility"]["reason"]
+    assert "Pune" in blocked["eligibility"]["reason"]
     assert blocked["eligibility"]["eligible_on"] > datetime.now(UTC).date().isoformat()
     stats = {item["id"]: item for item in ok(staff.get("/api/admin/source-stats"))}
     assert stats[referred["source"]["id"]]["completed"] == 1

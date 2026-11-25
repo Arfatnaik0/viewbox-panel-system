@@ -153,15 +153,16 @@ def survey_summary(survey: Survey) -> SurveySummary:
     )
 
 
+def survey_rule_summary(rule: SurveyRule) -> RuleBody:
+    return RuleBody(field=rule.field, mode=rule.mode, values=rule.allowed_values)
+
+
 def admin_survey_summary(survey: Survey) -> AdminSurvey:
     return AdminSurvey(
         **survey_summary(survey).model_dump(),
         published=survey.published,
         interests=[interest.name for interest in survey.interests],
-        rules=[
-            RuleBody(field=rule.field, mode=rule.mode, values=rule.allowed_values)
-            for rule in survey.rules
-        ],
+        rules=[survey_rule_summary(rule) for rule in survey.rules],
     )
 
 
@@ -233,27 +234,32 @@ def rule_mismatch(rule: SurveyRule, member: Member, today: date) -> str | None:
 
 def eligibility_for(survey: Survey, context: MemberContext, taken: int) -> Eligibility:
     member, time = context.member, context.time
+    today = time.date()
+    blockers: list[str] = []
+    eligible_on = None
     if not survey_is_live(survey, time):
-        message = "This survey has closed." if time >= survey.closes_at else "This survey is not open."
-        return Eligibility(status="rejected", reason=message)
-    if member.profile_completed_at is None:
-        return Eligibility(status="rejected", reason="Complete your profile before applying.")
-    if context.eligible_on is not None and time.date() < context.eligible_on:
-        return Eligibility(
-            status="rejected",
-            reason=f"Your three-month cool-off ends on {context.eligible_on:%d %b %Y}.",
-            eligible_on=context.eligible_on,
+        blockers.append(
+            "This survey has closed." if time >= survey.closes_at else "This survey is not open."
         )
+    if member.profile_completed_at is None:
+        blockers.append("Complete your profile before applying.")
+    if context.eligible_on is not None and today < context.eligible_on:
+        eligible_on = context.eligible_on
+        blockers.append(f"Your three-month cool-off ends on {eligible_on:%d %b %Y}.")
     if taken >= survey.quota:
-        return Eligibility(status="rejected", reason="All survey spots are filled.")
+        blockers.append("All survey spots are filled.")
 
     first_flexible_mismatch = None
     for rule in survey.rules:
-        mismatch = rule_mismatch(rule, member, time.date())
-        if mismatch and rule.mode == "strict":
-            return Eligibility(status="rejected", reason=mismatch)
-        if mismatch and first_flexible_mismatch is None:
+        mismatch = rule_mismatch(rule, member, today)
+        if not mismatch:
+            continue
+        if rule.mode == "strict":
+            blockers.append(mismatch)
+        elif first_flexible_mismatch is None:
             first_flexible_mismatch = mismatch
+    if blockers:
+        return Eligibility(status="rejected", reason=" ".join(blockers), eligible_on=eligible_on)
     if first_flexible_mismatch is not None:
         return Eligibility(status="waitlisted", reason=first_flexible_mismatch)
     return Eligibility(status="approved", reason="Your profile meets the survey requirements.")
@@ -378,7 +384,7 @@ def member_apply(survey_id: int, db: Database, member: CurrentMember) -> MemberS
     survey = get_survey(db, survey_id)
     time = now_utc()
     participation = member_participation(db, survey, member)
-    if not survey.published and participation is None:
+    if participation is None and (not survey.published or time < survey.opens_at):
         raise api_error(404, "survey_not_found", "This survey is not available.")
 
     context = member_context(db, member, time)

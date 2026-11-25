@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "./api.js";
-import { GENDERS, INCOMES, INTERESTS } from "./profile-options.js";
+import { GENDERS, INCOMES, INTERESTS, RULE_FIELDS } from "./profile-options.js";
 import {
   Field,
   formatDate,
@@ -11,12 +11,9 @@ import {
   useResource,
 } from "./portal-ui.jsx";
 
-const RULE_FIELDS = [
-  ["age", "Age range"],
-  ["city", "City"],
-  ["gender", "Gender"],
-  ["income_range", "Monthly income (INR)"],
-];
+const TITLE_MAX_LENGTH = 160;
+const DESCRIPTION_MAX_LENGTH = 4000;
+
 function localDateTime(date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
     .toISOString()
@@ -171,18 +168,20 @@ export default function AdminSurveys() {
   const resource = useResource("/admin/surveys");
   const [form, setForm] = useState(initialForm);
   const [rules, setRules] = useState([]);
+  const [textErrors, setTextErrors] = useState({});
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   const [publishing, setPublishing] = useState(null);
   function change(event) {
+    const { name, type, checked, value } = event.target;
     setForm((current) => ({
       ...current,
-      [event.target.name]:
-        event.target.type === "checkbox"
-          ? event.target.checked
-          : event.target.value,
+      [name]: type === "checkbox" ? checked : value,
     }));
+    if (textErrors[name]) {
+      setTextErrors((current) => ({ ...current, [name]: undefined }));
+    }
   }
   function updateRule(key, patch) {
     setRules((current) =>
@@ -199,6 +198,18 @@ export default function AdminSurveys() {
     event.preventDefault();
     setError("");
     setSuccess("");
+    const title = form.title.trim();
+    const description = form.description.trim();
+    const errors = {};
+    if (!title || title.length > TITLE_MAX_LENGTH) {
+      errors.title = `Enter a survey title of 1 to ${TITLE_MAX_LENGTH} characters.`;
+    }
+    if (!description || description.length > DESCRIPTION_MAX_LENGTH) {
+      errors.description = `Enter a description of 1 to ${DESCRIPTION_MAX_LENGTH} characters.`;
+    }
+    setTextErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     const start = new Date(form.opens_at),
       end = new Date(form.closes_at);
     if (!(end > start) || end - start > 15 * 86400000) {
@@ -242,8 +253,8 @@ export default function AdminSurveys() {
         method: "POST",
         body: {
           ...form,
-          title: form.title.trim(),
-          description: form.description.trim(),
+          title,
+          description,
           opens_at: start.toISOString(),
           closes_at: end.toISOString(),
           quota: Number(form.quota),
@@ -307,8 +318,17 @@ export default function AdminSurveys() {
                 value={form.title}
                 onChange={change}
                 required
-                maxLength={200}
+                maxLength={TITLE_MAX_LENGTH}
+                aria-invalid={Boolean(textErrors.title)}
+                aria-describedby={
+                  textErrors.title ? "survey-title-error" : undefined
+                }
               />
+              {textErrors.title && (
+                <p className="field-error" id="survey-title-error" role="alert">
+                  {textErrors.title}
+                </p>
+              )}
             </Field>
             <Field id="survey-description" label="Description">
               <textarea
@@ -318,8 +338,22 @@ export default function AdminSurveys() {
                 rows="3"
                 value={form.description}
                 onChange={change}
-                maxLength={3000}
+                required
+                maxLength={DESCRIPTION_MAX_LENGTH}
+                aria-invalid={Boolean(textErrors.description)}
+                aria-describedby={
+                  textErrors.description ? "survey-description-error" : undefined
+                }
               />
+              {textErrors.description && (
+                <p
+                  className="field-error"
+                  id="survey-description-error"
+                  role="alert"
+                >
+                  {textErrors.description}
+                </p>
+              )}
             </Field>
             <div className="form-grid">
               <Field id="survey-opens" label="Opens at (local time)">
