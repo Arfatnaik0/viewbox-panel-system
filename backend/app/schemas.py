@@ -97,3 +97,7 @@ class OtpIssued(BaseModel):
 
 class AdminSummary(BaseModel):
     email: str
+
+
+class StaffSession(AdminSummary):
+    role: str

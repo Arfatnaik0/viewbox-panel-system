@@ -1,14 +1,22 @@
 import hmac
 from datetime import timedelta
 from secrets import token_urlsafe
-from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, FastAPI, Request, Response, status
+from fastapi import APIRouter, FastAPI, Request, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .attribution import active_link, ensure_personal_link, ensure_source, signup_member
-from .db import SessionLocal, get_db, lock_for_write, make_engine
+from .db import SessionLocal, lock_for_write, make_engine
+from .dependencies import (
+    STAFF_ROLES,
+    AdminToken,
+    CurrentAdmin,
+    CurrentMember,
+    CurrentStaff,
+    Database,
+    MemberToken,
+)
 from .models import (
     Interest,
     LoginSession,
@@ -19,6 +27,7 @@ from .models import (
     Source,
     StaffAccount,
 )
+from .operations import router as operations_router
 from .schemas import (
     AdminLogin,
     AdminSource,
@@ -31,6 +40,7 @@ from .schemas import (
     SignupLinkSummary,
     SourceCreate,
     SourceSummary,
+    StaffSession,
 )
 from .security import (
     ADMIN_COOKIE,
@@ -38,12 +48,12 @@ from .security import (
     MEMBER_COOKIE,
     OTP_MAX_ATTEMPTS,
     api_error,
-    find_session,
     hash_token,
     now_utc,
     password_matches,
     set_session_cookie,
 )
+from .surveys import router as surveys_router
 
 OTP_TTL = timedelta(minutes=5)
 MEMBER_SESSION_SECONDS = 24 * 60 * 60
@@ -51,31 +61,6 @@ ADMIN_SESSION_SECONDS = 12 * 60 * 60
 DUMMY_PASSWORD_HASH = "0" * 32 + "$" + "0" * 128
 
 router = APIRouter(prefix="/api")
-Database = Annotated[Session, Depends(get_db)]
-MemberToken = Annotated[str | None, Cookie(alias=MEMBER_COOKIE)]
-AdminToken = Annotated[str | None, Cookie(alias=ADMIN_COOKIE)]
-
-
-def require_member(db: Database, token: MemberToken = None) -> Member:
-    login = find_session(db, token)
-    if login and login.member_id is not None:
-        member = db.get(Member, login.member_id)
-        if member and member.status == "active":
-            return member
-    raise api_error(401, "member_login_required", "Sign in to your member account.")
-
-
-def require_admin(db: Database, token: AdminToken = None) -> StaffAccount:
-    login = find_session(db, token)
-    if login and login.staff_id is not None:
-        admin = db.get(StaffAccount, login.staff_id)
-        if admin and admin.role == "admin":
-            return admin
-    raise api_error(401, "admin_login_required", "Sign in as an admin.")
-
-
-CurrentMember = Annotated[Member, Depends(require_member)]
-CurrentAdmin = Annotated[StaffAccount, Depends(require_admin)]
 
 
 def member_summary(db: Session, member: Member) -> MemberSummary:
@@ -218,9 +203,9 @@ def logout(db: Database, member_token: MemberToken = None, admin_token: AdminTok
 def admin_login(
     data: AdminLogin, db: Database, response: Response, token: AdminToken = None
 ) -> AdminSummary:
-    admin = db.scalar(select(StaffAccount).where(StaffAccount.email == data.email))
-    matches = password_matches(data.password, admin.password_hash if admin else DUMMY_PASSWORD_HASH)
-    if not matches or admin is None or admin.role != "admin":
+    staff = db.scalar(select(StaffAccount).where(StaffAccount.email == data.email))
+    matches = password_matches(data.password, staff.password_hash if staff else DUMMY_PASSWORD_HASH)
+    if not matches or staff is None or staff.role not in STAFF_ROLES:
         raise api_error(401, "invalid_admin_login", "The email or password is incorrect.")
 
     if token:
@@ -230,17 +215,22 @@ def admin_login(
     new_token = token_urlsafe(32)
     db.add(LoginSession(
         token_hash=hash_token(new_token),
-        staff_id=admin.id,
+        staff_id=staff.id,
         expires_at=now_utc() + timedelta(seconds=ADMIN_SESSION_SECONDS),
     ))
     db.commit()
     set_session_cookie(response, ADMIN_COOKIE, new_token, ADMIN_SESSION_SECONDS)
-    return AdminSummary(email=admin.email)
+    return AdminSummary(email=staff.email)
 
 
 @router.get("/admin/me")
 def admin_me(admin: CurrentAdmin) -> AdminSummary:
     return AdminSummary(email=admin.email)
+
+
+@router.get("/admin/session")
+def staff_session(staff: CurrentStaff) -> StaffSession:
+    return StaffSession(email=staff.email, role=staff.role)
 
 
 @router.get("/admin/sources")
@@ -284,6 +274,8 @@ def create_app(database_url: str | None = None) -> FastAPI:
         return response
 
     application.include_router(router)
+    application.include_router(surveys_router)
+    application.include_router(operations_router)
     return application
 
 
