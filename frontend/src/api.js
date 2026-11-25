@@ -6,7 +6,10 @@ export class ApiError extends Error {
   }
 }
 
-export async function api(path, { method = "GET", body, signal } = {}) {
+export async function api(
+  path,
+  { method = "GET", body, signal, responseType = "json" } = {},
+) {
   let response;
   try {
     response = await fetch(`/api${path}`, {
@@ -25,6 +28,7 @@ export async function api(path, { method = "GET", body, signal } = {}) {
     );
   }
   if (response.status === 204) return null;
+  if (response.ok && responseType === "blob") return response.blob();
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = data?.detail;

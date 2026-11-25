@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import {
   Link,
   Navigate,
@@ -10,29 +10,16 @@ import {
 } from "react-router-dom";
 import { api } from "./api.js";
 
-const SessionContext = createContext(null);
+import { SessionContext } from "./session.js";
+import { GENDERS, INCOMES, INTERESTS } from "./profile-options.js";
+import { MemberSurveys, MyReferrals, SurveyDetail } from "./member-pages.jsx";
+import { AdminOnly, MemberNavigation, StaffLayout } from "./staff-layout.jsx";
+import AdminSurveys from "./admin-surveys.jsx";
+import { RespondentDetail, Respondents } from "./admin-respondents.jsx";
+import SourceDashboard from "./source-dashboard.jsx";
+import "./operations.css";
+
 const SOURCE_STORAGE = "viewbox.signup-source";
-const INTERESTS = [
-  "Food & beverages",
-  "Shopping",
-  "Technology",
-  "Travel",
-  "Health & wellness",
-  "Entertainment",
-];
-const GENDERS = [
-  ["female", "Female"],
-  ["male", "Male"],
-  ["non_binary", "Non-binary"],
-  ["prefer_not_to_say", "Prefer not to say"],
-];
-const INCOMES = [
-  ["under_25000", "Below ₹25,000"],
-  ["25000_50000", "₹25,000–₹50,000"],
-  ["50000_100000", "₹50,000–₹1,00,000"],
-  ["over_100000", "Above ₹1,00,000"],
-  ["prefer_not_to_say", "Prefer not to say"],
-];
 
 function storedToken() {
   try {
@@ -198,9 +185,9 @@ function Story({ staff = false }) {
       <h1 className="story-title">
         {staff ? (
           <>
-            Manage sources.
+            Manage research.
             <br />
-            <span>Connect signups.</span>
+            <span>Track progress.</span>
           </>
         ) : (
           <>
@@ -212,7 +199,7 @@ function Story({ staff = false }) {
       </h1>
       <p className="story-copy">
         {staff
-          ? "Create signup links for your channels and keep every new member connected to their source."
+          ? "Review respondents, record survey progress and understand which sources bring members."
           : "Bring your perspective to the conversation. Start with your profile, then share ViewBox with the people you know."}
       </p>
       <div className="story-art" aria-hidden="true">
@@ -604,7 +591,9 @@ function MemberGuard({ children, complete = false }) {
 function Profile() {
   const { member, setMember } = useContext(SessionContext);
   const navigate = useNavigate();
-  const interestChoices = [...new Set([...INTERESTS, ...(member.interests || [])])];
+  const interestChoices = [
+    ...new Set([...INTERESTS, ...(member.interests || [])]),
+  ];
   const [form, setForm] = useState({
     name: member.name || "",
     date_of_birth: member.date_of_birth || "",
@@ -953,19 +942,7 @@ function Home() {
           )}
         </section>
       </div>
-      <section className="empty-state" aria-labelledby="next-title">
-        <div className="empty-icon" aria-hidden="true">
-          ◒
-        </div>
-        <div>
-          <p className="step-label">PROFILE STATUS</p>
-          <h2 id="next-title">Your profile is ready.</h2>
-          <p className="muted">
-            You’re all set for now. Keep your details up to date so we know your
-            latest interests.
-          </p>
-        </div>
-      </section>
+      <MemberSurveys embedded />
     </div>
   );
 }
@@ -985,7 +962,7 @@ function AdminLogin() {
         method: "POST",
         body: { email: email.trim(), password },
       });
-      navigate("/admin/sources", { replace: true });
+      navigate("/admin/respondents", { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1001,7 +978,9 @@ function AdminLogin() {
           <h2 className="card-title" id="staff-title">
             Back to the desk.
           </h2>
-          <p className="muted">Sign in to manage your signup sources.</p>
+          <p className="muted">
+            Sign in to manage respondents and survey progress.
+          </p>
         </div>
         <Notice kind="error">{error}</Notice>
         <form className="form-stack" onSubmit={login}>
@@ -1040,6 +1019,10 @@ function AdminLogin() {
             Email: <code>admin@viewbox.test</code>
             <br />
             Password: <code>ViewBoxDemo!32</code>
+            <br />
+            Staff: <code>staff@viewbox.test</code>
+            <br />
+            Staff password: <code>ViewBoxStaff!32</code>
           </p>
         </details>
         <p className="card-footnote">
@@ -1052,7 +1035,6 @@ function AdminLogin() {
 }
 
 function AdminSources() {
-  const { setMember } = useContext(SessionContext);
   const navigate = useNavigate();
   const [admin, setAdmin] = useState(null);
   const [sources, setSources] = useState(null);
@@ -1067,7 +1049,7 @@ function AdminSources() {
     setLoading(true);
     setError("");
     try {
-      const identity = await api("/admin/me");
+      const identity = await api("/admin/session");
       setAdmin(identity);
       setSources(await api("/admin/sources"));
     } catch (err) {
@@ -1103,19 +1085,6 @@ function AdminSources() {
       setBusy(false);
     }
   }
-  async function logout() {
-    setBusy(true);
-    setError("");
-    try {
-      await api("/auth/logout", { method: "POST" });
-      setMember(null);
-      navigate("/admin/login", { replace: true });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
   if (loading) return <Loading message="Opening your sources…" />;
   return (
     <div className="admin-page">
@@ -1130,12 +1099,6 @@ function AdminSources() {
             Create a unique link for each channel. Know where your members come
             from.
           </p>
-        </div>
-        <div className="admin-identity">
-          {admin && <span>{admin.email}</span>}
-          <button className="text-button" onClick={logout} disabled={busy}>
-            Log out <span aria-hidden="true">↗</span>
-          </button>
         </div>
       </div>
       {error && (
@@ -1255,12 +1218,21 @@ function NotFound() {
   );
 }
 
+function MemberRouteNavigation() {
+  const { member } = useContext(SessionContext);
+  const { pathname } = useLocation();
+  return member?.profile_complete && !pathname.startsWith("/admin") ? (
+    <MemberNavigation />
+  ) : null;
+}
+
 export default function App() {
   return (
     <SessionProvider>
       <div className="app-shell">
         <Header />
         <main className="main-content">
+          <MemberRouteNavigation />
           <Routes>
             <Route path="/" element={<Login />} />
             <Route path="/join/:token" element={<Login />} />
@@ -1281,7 +1253,52 @@ export default function App() {
               }
             />
             <Route path="/admin/login" element={<AdminLogin />} />
-            <Route path="/admin/sources" element={<AdminSources />} />
+            <Route
+              path="/surveys"
+              element={
+                <MemberGuard complete>
+                  <MemberSurveys />
+                </MemberGuard>
+              }
+            />
+            <Route
+              path="/surveys/:id"
+              element={
+                <MemberGuard complete>
+                  <SurveyDetail />
+                </MemberGuard>
+              }
+            />
+            <Route
+              path="/referrals"
+              element={
+                <MemberGuard complete>
+                  <MyReferrals />
+                </MemberGuard>
+              }
+            />
+            <Route path="/admin" element={<StaffLayout />}>
+              <Route index element={<Navigate to="respondents" replace />} />
+              <Route path="respondents" element={<Respondents />} />
+              <Route path="respondents/:id" element={<RespondentDetail />} />
+              <Route path="dashboard" element={<SourceDashboard />} />
+              <Route
+                path="surveys"
+                element={
+                  <AdminOnly>
+                    <AdminSurveys />
+                  </AdminOnly>
+                }
+              />
+              <Route
+                path="sources"
+                element={
+                  <AdminOnly>
+                    <AdminSources />
+                  </AdminOnly>
+                }
+              />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
