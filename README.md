@@ -2,7 +2,7 @@
 
 ## 1. Project overview
 
-ViewBox helps Concave Insights manage its paid survey panel. Members sign in by phone, check their survey eligibility, apply, and follow their referrals. Admins create signup links and surveys. Staff track survey and referral progress, export filtered respondent lists, and compare outcomes by signup source.
+ViewBox helps Concave Insights manage its paid survey panel. Members sign in by phone, apply to surveys, and follow their referrals. Admins create signup links and surveys. Staff manage participants, compare source outcomes, and import or export respondent data. A mock endpoint accepts Meta Ads leads.
 
 ## 2. Tech stack
 
@@ -51,7 +51,7 @@ PYTHONPATH=backend python -m pytest -q tests
 | Admin | Open [staff sign-in](http://localhost:5173/admin/login) and use `admin@viewbox.test` / `ViewBoxDemo!32` to manage surveys and signup links. |
 | Operations staff | Use `staff@viewbox.test` / `ViewBoxStaff!32` at the same sign-in. Search for **Referred Demo Member** to manage their applications or see their referral. |
 
-The demo also includes **Food delivery habits**. Its flexible Pune rule lets the Mumbai demo members try joining a waitlist.
+The demo also includes **Food delivery habits**. Its flexible Pune rule lets the Mumbai demo members try joining a waitlist. In **CSV import**, use [the synthetic respondent sample](examples/demo-respondents.csv) to preview two valid rows and one rejected row. The supplied assessment CSV can be uploaded separately. The [mock Meta payload](examples/meta-lead.json) is also synthetic.
 
 ## 5. Features
 
@@ -62,12 +62,13 @@ The demo also includes **Food delivery habits**. Its flexible Pune rule lets the
 | Live surveys, applications, eligibility, quota, and cool-off | Done |
 | Referral progress and staff review | Done |
 | Respondent search, filters, CSV export, and source reporting | Done |
-| CSV import and mock Meta lead intake | Not done |
-| Fraud review, payouts, and import preview | Not done |
+| Messy CSV import, preview, and row-level report | Done |
+| Mock Meta lead intake and duplicate protection | Done |
+| Fraud review queue and payout ledger | Not done |
 
 ## 6. Database design
 
-The [Day 2 database diagram](design/database-diagram.md) describes the full planned model. The current migrations cover member accounts, signup sources, staff accounts, surveys, rules, interests, applications, and referrals. An approved application counts toward the survey quota. A verified referral follows a single qualifying application from Fit to Completed. See the [user flow](design/user-flow.md) and [frontend stack update](design/frontend-stack-update.md).
+The [Day 2 database diagram](design/database-diagram.md) describes the panel model. React sends same-origin requests through Vite's local proxy. FastAPI validates requests and permissions. SQLAlchemy records changes in SQLite, and Alembic applies schema changes. A normalized phone identifies one member. Sources and personal referral credit are separate, and a referral follows one qualifying application. Legacy keys link CSV referral rows on a second pass, while unique Meta lead IDs prevent repeat deliveries from creating another lead. See the [user flow](design/user-flow.md) and [frontend stack update](design/frontend-stack-update.md).
 
 ## 7. API endpoints
 
@@ -103,6 +104,26 @@ FastAPI provides [interactive API documentation](http://localhost:8000/docs) whe
 | `POST /api/admin/referrals/{id}/review` | Resolve a named referral claim | `{"referrer_member_id":1}` or `{"failure_reason":"Referrer could not be verified."}` → `204 No Content` |
 | `POST /api/admin/referrals/{id}/fail` | Record why a verified referral failed | `{"reason":"Survey participation was incomplete."}` → `204 No Content` |
 | `GET /api/admin/source-stats` | Compare signup and survey milestones by source | Staff session cookie → `[{"id":1,"name":"Mumbai WhatsApp","signups":1,"fit":0,"completed":0}]` |
+| `POST /api/admin/imports/respondents?preview=true` | Preview a respondent CSV (use `preview=false` to save) | Multipart field `file` → `{"preview":true,"summary":{"total":3,"created":2,"matched":0,"fixed":2,"skipped":1},"issues":[{"row":4,"action":"skipped","reason":"Invalid phone number."}]}` (abridged example) |
+| `POST /api/integrations/meta/leads` | Accept an enriched mock Meta lead | [Example lead payload](examples/meta-lead.json) → `201 {"lead_id":"demo-lead-001","member_id":3,"campaign_id":"demo-campaign-001","created_member":true,"duplicate":false}`. Repeating the lead ID returns `200` with `duplicate:true`. |
+
+### Try the mock Meta endpoint
+
+In a live integration, Meta sends a Page `leadgen` webhook with a lead ID. The receiver uses that ID to fetch the submitted fields and campaign data from the Graph API. This local endpoint accepts the enriched record directly. It requires a demo admin session and makes no requests to Meta. [Meta lead webhooks](https://developers.facebook.com/docs/graph-api/webhooks/getting-started/webhooks-for-leadgen/) · [Meta lead retrieval](https://developers.facebook.com/docs/marketing-api/guides/lead-ads/retrieving/)
+
+Run from the repository root while the backend is running:
+
+```sh
+cookie_jar=$(mktemp)
+curl --fail-with-body -sS -c "$cookie_jar" 'http://localhost:8000/api/admin/login' \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@viewbox.test","password":"ViewBoxDemo!32"}'
+curl --fail-with-body -sS -b "$cookie_jar" 'http://localhost:8000/api/integrations/meta/leads' \
+  -H 'Content-Type: application/json' --data-binary @examples/meta-lead.json
+rm -f "$cookie_jar"
+```
+
+An invalid payload returns `422` with a validation error. A new lead from an existing phone is linked to that member and preserves their original acquisition source.
 
 ## 8. Assumptions and decisions
 
@@ -111,7 +132,14 @@ FastAPI provides [interactive API documentation](http://localhost:8000/docs) whe
 - The local demo displays the OTP in the browser. Use demo contact details while testing.
 - Eligibility previews leave survey capacity available. Applications reserve a spot only when approved. A flexible rule mismatch puts the member on the waitlist when every strict rule and operating limit is met.
 - A completed survey starts a cool-off of three calendar months. Staff record Fit and Completed separately. Source totals count each member once per milestone, even when that member has several applications.
+- The CSV import normalizes known formats and source aliases, preserves annual income bands, and reports uncertain or unusable values. A preview writes nothing. Existing phones retain their original attribution. Legacy referral IDs are used only when the match is unambiguous.
+
+### Payment gateway plan
+
+RazorpayX fits the planned INR payouts to verified Indian bank accounts. After staff approve a ledger entry for a completed survey or referral, a worker would create or reuse the payee Contact (`POST /v1/contacts`) and Fund Account (`POST /v1/fund_accounts`), then send `POST /v1/payouts` with the amount in paise and a stable `X-Payout-Idempotency` key. Store the provider payout ID and reconcile it with signed webhooks and `GET /v1/payouts/{id}`. [RazorpayX payout APIs](https://razorpay.com/docs/api/x/payouts/) · [RazorpayX webhook states](https://axisbank-docs.razorpay.com/razorpayx/webhooks/payloads/)
+
+Keep queued or processing transfers pending. On a timeout, check the existing transfer or retry the same request with the same key. Mark a ledger entry paid only after a confirmed processed state. Route failures and reversals to staff for review before authorizing any new transfer.
 
 ## 9. Known issues and next steps
 
-CSV import and mock Meta lead intake are the remaining core features. The optional fraud queue, payout ledger, and import preview follow the core work. The final submission will include the payment gateway plan and a walkthrough video.
+This is a local prototype. Phone verification shows a demo OTP, lead intake uses a mock payload, and survey completion is confirmed by operations staff. Real SMS, signed Meta webhooks, fraud review, and payout integration are future work. Use synthetic records in public demonstrations.
