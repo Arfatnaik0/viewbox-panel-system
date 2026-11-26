@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "./api.js";
+import { SessionContext } from "./session.js";
 
 export function Notice({ children, kind = "info" }) {
   return children ? (
@@ -104,12 +105,20 @@ export function useDebounced(value, delay = 250) {
 }
 
 export function ResourceError({ error, retry, staff = false }) {
+  const session = useContext(SessionContext);
   if (!error) return null;
   return (
     <Notice kind="error">
       {error.message}{" "}
       {error.status === 401 ? (
-        <Link to={staff ? "/admin/login" : "/"}>Sign in again</Link>
+        <Link
+          to={staff ? "/admin/login" : "/"}
+          onClick={() => {
+            if (!staff) session?.setMember(null);
+          }}
+        >
+          Sign in again
+        </Link>
       ) : (
         <button className="inline-button" type="button" onClick={retry}>
           Try again

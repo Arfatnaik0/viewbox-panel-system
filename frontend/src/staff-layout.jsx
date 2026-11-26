@@ -49,6 +49,7 @@ export function StaffLayout() {
       </div>
       <nav className="portal-nav" aria-label="Staff navigation">
         <NavLink to="/admin/respondents">Respondents</NavLink>
+        <NavLink to="/admin/import">Import CSV</NavLink>
         <NavLink to="/admin/dashboard">Source dashboard</NavLink>
         {session.data.role === "admin" && (
           <>

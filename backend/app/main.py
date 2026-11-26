@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .attribution import active_link, ensure_personal_link, ensure_source, signup_member
+from .csv_import import router as csv_import_router
 from .db import SessionLocal, lock_for_write, make_engine
 from .dependencies import (
     STAFF_ROLES,
@@ -17,6 +18,7 @@ from .dependencies import (
     Database,
     MemberToken,
 )
+from .meta_leads import router as meta_leads_router
 from .models import (
     Interest,
     LoginSession,
@@ -276,6 +278,8 @@ def create_app(database_url: str | None = None) -> FastAPI:
     application.include_router(router)
     application.include_router(surveys_router)
     application.include_router(operations_router)
+    application.include_router(csv_import_router)
+    application.include_router(meta_leads_router)
     return application
 
 

@@ -17,6 +17,7 @@ import { AdminOnly, MemberNavigation, StaffLayout } from "./staff-layout.jsx";
 import AdminSurveys from "./admin-surveys.jsx";
 import { RespondentDetail, Respondents } from "./admin-respondents.jsx";
 import SourceDashboard from "./source-dashboard.jsx";
+import RespondentImport from "./respondent-import.jsx";
 import "./operations.css";
 
 const SOURCE_STORAGE = "viewbox.signup-source";
@@ -742,7 +743,7 @@ function Profile() {
                 maxLength={100}
               />
             </Field>
-            <Field id="income" label="Monthly income (INR)">
+            <Field id="income" label="Income range (INR)">
               <select
                 className="select"
                 id="income"
@@ -1281,6 +1282,7 @@ export default function App() {
               <Route index element={<Navigate to="respondents" replace />} />
               <Route path="respondents" element={<Respondents />} />
               <Route path="respondents/:id" element={<RespondentDetail />} />
+              <Route path="import" element={<RespondentImport />} />
               <Route path="dashboard" element={<SourceDashboard />} />
               <Route
                 path="surveys"

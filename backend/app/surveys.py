@@ -25,10 +25,15 @@ Description = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 InterestName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 SURVEY_MAX_DURATION = timedelta(days=15)
 INCOME_LABELS = {
-    "under_25000": "below ₹25,000",
-    "25000_50000": "₹25,000–₹50,000",
-    "50000_100000": "₹50,000–₹1,00,000",
-    "over_100000": "above ₹1,00,000",
+    "under_25000": "below ₹25,000/month",
+    "25000_50000": "₹25,000–₹50,000/month",
+    "50000_100000": "₹50,000–₹1,00,000/month",
+    "over_100000": "above ₹1,00,000/month",
+    "annual_under_3l": "below ₹3 lakh/year",
+    "annual_3l_6l": "₹3–6 lakh/year",
+    "annual_6l_10l": "₹6–10 lakh/year",
+    "annual_10l_20l": "₹10–20 lakh/year",
+    "annual_over_20l": "above ₹20 lakh/year",
 }
 
 
