@@ -9,13 +9,13 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .attribution import ensure_personal_link, ensure_source
 from .db import lock_for_write
 from .dependencies import CurrentStaff, Database
-from .legacy_models import LegacyMemberKey
+from .legacy_models import LegacyMemberKey, LegacyReferralKey
 from .models import Interest, Member, MemberInterest, Referral
 from .operations import bind_referral_to_first_fit
 from .security import api_error, normalize_phone, now_utc
@@ -364,6 +364,24 @@ def register_legacy_ids(db: Session, rows: list[BoundRow], result: ImportResult)
             db.add(LegacyMemberKey(legacy_id=legacy_id))
         else:
             previous.member_id = None
+            referrals = list(db.scalars(
+                select(Referral).join(LegacyReferralKey).where(LegacyReferralKey.legacy_id == legacy_id)
+            ))
+            for referral in referrals:
+                referral.referrer_member_id = None
+                referral.claimed_name = f"Legacy ID: {legacy_id}"[:120]
+                referral.verification_status = "pending"
+                referral.stage = None
+                referral.participation_id = None
+                referral.failure_reason = None
+            if referrals:
+                # Staff review becomes authoritative, so later imports must not
+                # undo the decision even if another linked ID is ambiguous.
+                db.execute(delete(LegacyReferralKey).where(
+                    LegacyReferralKey.referral_id.in_([referral.id for referral in referrals])
+                ))
+                for row in group:
+                    result.report(row.row, "notice", "Previously imported referrals using this ID now require staff review.")
         for row in group:
             result.report(row.row, "notice", "This legacy ID maps to multiple members; references to it were left unresolved.")
     db.flush()
@@ -393,6 +411,8 @@ def resolve_referrals(db: Session, rows: list[BoundRow], result: ImportResult) -
             )
             db.add(referral)
             bind_referral_to_first_fit(db, referral)
+            db.flush()
+            db.add_all(LegacyReferralKey(referral_id=referral.id, legacy_id=key) for key in keys)
             continue
         for row in group:
             result.report(row.row, "notice", reason)

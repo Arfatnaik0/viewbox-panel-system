@@ -123,6 +123,66 @@ def test_csv_never_relinks_an_ambiguous_legacy_id_on_repeat(make_client, session
         assert count == 0
 
 
+def test_later_ambiguous_id_sends_imported_referral_for_review(make_client, session_factory):
+    staff = as_staff(make_client)
+    columns = "member_id,name,phone,referred_by\n"
+    first = upload(staff, columns + (
+        "old,Original,9000102251,\n"
+        "alias,Original,9000102251,\n"
+        "friend,Friend,9000102252,old\n"
+        "friend,Friend,9000102252,alias\n"
+        "independent,Independent,9000102253,\n"
+        "failed,Failed,9000102256,old\n"
+    ))
+    assert first.status_code == 200, first.text
+    with session_factory() as session:
+        original = session.scalar(select(Member).where(Member.phone_e164 == "+919000102251"))
+        friend = session.scalar(select(Member).where(Member.phone_e164 == "+919000102252"))
+        independent = session.scalar(select(Member).where(Member.phone_e164 == "+919000102253"))
+        failed_member = session.scalar(select(Member).where(Member.phone_e164 == "+919000102256"))
+        original_id = original.id
+        independent_id = independent.id
+        referral = session.scalar(select(Referral).where(Referral.referred_member_id == friend.id))
+        referral_id = referral.id
+        failed_id = session.scalar(select(Referral.id).where(Referral.referred_member_id == failed_member.id))
+        assert (referral.referrer_member_id, referral.verification_status) == (original_id, "verified")
+        session.add(Referral(
+            referred_member_id=independent.id, referrer_member_id=original_id,
+            verification_status="verified", stage="lead",
+        ))
+        session.commit()
+
+    failed = staff.post(f"/api/admin/referrals/{failed_id}/fail", json={"reason": "Reviewed by staff"})
+    assert failed.status_code == 204, failed.text
+
+    collision = columns + "old,Other,9000102254,\n"
+    preview = upload(staff, collision, preview=True)
+    assert preview.status_code == 200, preview.text
+    assert any("require staff review" in issue["reason"] for issue in preview.json()["issues"])
+    with session_factory() as session:
+        assert session.get(Referral, referral_id).verification_status == "verified"
+
+    saved = upload(staff, collision)
+    assert saved.status_code == 200, saved.text
+    with session_factory() as session:
+        referral = session.get(Referral, referral_id)
+        assert (referral.referrer_member_id, referral.verification_status, referral.stage) == (None, "pending", None)
+        assert referral.claimed_name == "Legacy ID: old"
+        assert referral.participation_id is None
+        independent_referral = session.scalar(select(Referral).where(Referral.referred_member_id == independent_id))
+        assert (independent_referral.referrer_member_id, independent_referral.verification_status) == (original_id, "verified")
+        failed_referral = session.get(Referral, failed_id)
+        assert (failed_referral.stage, failed_referral.failure_reason) == ("failed", "Reviewed by staff")
+
+    reviewed = staff.post(f"/api/admin/referrals/{referral_id}/review", json={"referrer_member_id": original_id})
+    assert reviewed.status_code == 204, reviewed.text
+    second_collision = upload(staff, columns + "alias,Another,9000102255,\n")
+    assert second_collision.status_code == 200, second_collision.text
+    with session_factory() as session:
+        referral = session.get(Referral, referral_id)
+        assert (referral.referrer_member_id, referral.verification_status) == (original_id, "verified")
+
+
 def test_csv_recovers_after_broken_quoting_and_accepts_a_multiline_record(make_client, session_factory):
     staff = as_staff(make_client)
     bad = upload(staff, "name,name\nUnsupported,Header\n")

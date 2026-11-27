@@ -35,6 +35,12 @@ INCOME_LABELS = {
     "annual_10l_20l": "₹10–20 lakh/year",
     "annual_over_20l": "above ₹20 lakh/year",
 }
+# These bands have identical boundaries; the other annual and monthly bands
+# overlap only partially and must remain distinct.
+INCOME_EQUIVALENTS = {
+    "annual_under_3l": "under_25000",
+    "annual_3l_6l": "25000_50000",
+}
 
 
 def unique_labels(labels: list[str]) -> list[str]:
@@ -226,8 +232,14 @@ def rule_mismatch(rule: SurveyRule, member: Member, today: date) -> str | None:
 
     current = getattr(member, rule.field)
     allowed = rule.allowed_values
-    if current is not None and current.strip().casefold() in {value.casefold() for value in allowed}:
-        return None
+    if current is not None:
+        current_value = current.strip().casefold()
+        allowed_values = {value.casefold() for value in allowed}
+        if rule.field == "income_range":
+            current_value = INCOME_EQUIVALENTS.get(current_value, current_value)
+            allowed_values = {INCOME_EQUIVALENTS.get(value, value) for value in allowed_values}
+        if current_value in allowed_values:
+            return None
     label = {"city": "cities", "gender": "genders", "income_range": "income ranges"}[rule.field]
     values = (
         INCOME_LABELS.get(value, value.replace("_", " ")) if rule.field == "income_range"

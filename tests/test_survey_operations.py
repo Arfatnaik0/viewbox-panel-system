@@ -2,6 +2,10 @@ import csv
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 
+import pytest
+from sqlalchemy import select
+
+from app.models import Member
 from app.seed import DEMO_REFERRED_PHONE
 from test_panel_flows import DEMO_ADMIN, DEMO_MEMBER_PHONE, sign_in
 
@@ -101,6 +105,33 @@ def test_strict_failure_takes_priority_over_waitlist(make_client):
     assert "ages 18 to 19" in reason
     assert "genders: male" in reason
     assert "Pune" not in reason
+
+
+@pytest.mark.parametrize(("member_income", "rule_income", "expected"), [
+    ("annual_under_3l", "under_25000", "approved"),
+    ("under_25000", "annual_under_3l", "approved"),
+    ("annual_3l_6l", "25000_50000", "approved"),
+    ("25000_50000", "annual_3l_6l", "approved"),
+    ("annual_10l_20l", "over_100000", "rejected"),
+    ("over_100000", "annual_10l_20l", "rejected"),
+])
+def test_income_rules_match_equivalent_bands_only(
+    make_client, session_factory, member_income, rule_income, expected,
+):
+    with session_factory() as db:
+        member = db.scalar(select(Member).where(Member.phone_e164 == DEMO_MEMBER_PHONE))
+        member.income_range = member_income
+        db.commit()
+
+    admin = staff_client(make_client, DEMO_ADMIN)
+    member = make_client()
+    sign_in(member, DEMO_MEMBER_PHONE)
+    survey_id = create_survey(admin, rules=[{
+        "field": "income_range", "mode": "strict", "values": [rule_income],
+    }])["id"]
+
+    preview = ok(member.get(f"/api/member/surveys/{survey_id}"))
+    assert preview["eligibility"]["status"] == expected
 
 
 def test_staff_milestones_update_referrer_and_cool_off(make_client):
