@@ -201,7 +201,7 @@ function Story({ staff = false }) {
       <p className="story-copy">
         {staff
           ? "Review respondents, record survey progress and understand which sources bring members."
-          : "Bring your perspective to the conversation. Start with your profile, then share ViewBox with the people you know."}
+          : "Sign in to find surveys that match your profile and track your referrals."}
       </p>
       <div className="story-art" aria-hidden="true">
         <div className="art-window">
@@ -652,16 +652,11 @@ function Profile() {
           A little about <em>you.</em>
         </h1>
         <p className="muted">
-          Your details help us understand your perspective and match you with
-          relevant research.
+          We use these details to check which surveys you qualify for.
         </p>
         <div className="profile-note">
           <span aria-hidden="true">✳</span>
-          <p>
-            One profile, all in one place.
-            <br />
-            <strong>You can update it whenever you need.</strong>
-          </p>
+          <p>You can edit these details later.</p>
         </div>
         {member.source && (
           <div className="source-badge">
@@ -850,7 +845,7 @@ function Home() {
     try {
       await navigator.share({
         title: "Join ViewBox Club",
-        text: "Bring your perspective to ViewBox Club.",
+        text: "Join me on ViewBox Club.",
         url: referralUrl,
       });
     } catch (err) {
@@ -869,7 +864,7 @@ function Home() {
             Hello, {member.name?.split(" ")[0] || "there"}
             <span className="coral">.</span>
           </h1>
-          <p className="muted">Good to have your perspective here.</p>
+          <p className="muted">Browse open surveys or check your referrals.</p>
         </div>
         <Link className="button button-secondary button-small" to="/profile">
           Edit profile <span aria-hidden="true">↗</span>
@@ -977,7 +972,7 @@ function AdminLogin() {
         <div className="card-header">
           <p className="step-label">VIEWBOX STAFF</p>
           <h2 className="card-title" id="staff-title">
-            Back to the desk.
+            Staff sign-in
           </h2>
           <p className="muted">
             Sign in to manage respondents and survey progress.
@@ -1027,7 +1022,7 @@ function AdminLogin() {
           </p>
         </details>
         <p className="card-footnote">
-          Here to share your perspective?{" "}
+          Looking for surveys?{" "}
           <Link to="/">Open the member portal</Link>
         </p>
       </section>

@@ -2,7 +2,7 @@
 
 ## 1. Project overview
 
-ViewBox helps Concave Insights manage its paid survey panel. Members sign in by phone, apply to surveys, and follow their referrals. Admins create signup links and surveys. Staff manage participants, compare source outcomes, and import or export respondent data. A mock endpoint accepts Meta Ads leads.
+ViewBox tracks how respondents join a paid survey panel, which surveys they qualify for, and whether their referrals complete a survey. Members sign in by phone. Admins publish surveys and create signup links. Staff review applications and referrals, see how each signup source performs, and import or export respondent records.
 
 ## 2. Tech stack
 
@@ -51,7 +51,7 @@ PYTHONPATH=backend python -m pytest -q tests
 | Admin | Open [staff sign-in](http://localhost:5173/admin/login) and use `admin@viewbox.test` / `ViewBoxDemo!32` to manage surveys and signup links. |
 | Operations staff | Use `staff@viewbox.test` / `ViewBoxStaff!32` at the same sign-in. Search for **Referred Demo Member** to manage their applications or see their referral. |
 
-The demo also includes **Food delivery habits**. Its flexible Pune rule lets the Mumbai demo members try joining a waitlist. In **CSV import**, use [the synthetic respondent sample](examples/demo-respondents.csv) to preview two valid rows and one rejected row. The supplied assessment CSV can be uploaded separately. The [mock Meta payload](examples/meta-lead.json) is also synthetic.
+To see a waitlisted result, open **Food delivery habits** as a Mumbai demo member. The survey has a flexible Pune rule. To try an import, open **Import CSV** and select [the demo CSV](examples/demo-respondents.csv). The preview shows two accepted rows and one skipped row. Use [the example Meta payload](examples/meta-lead.json) to test the endpoint.
 
 ## 5. Features
 
@@ -68,7 +68,9 @@ The demo also includes **Food delivery habits**. Its flexible Pune rule lets the
 
 ## 6. Database design
 
-The [Day 2 database diagram](design/database-diagram.md) describes the panel model. React sends same-origin requests through Vite's local proxy. FastAPI validates requests and permissions. SQLAlchemy records changes in SQLite, and Alembic applies schema changes. A normalized phone identifies one member. Sources and personal referral credit are separate, and a referral follows one qualifying application. Legacy keys link CSV referral rows on a second pass, while unique Meta lead IDs prevent repeat deliveries from creating another lead. See the [user flow](design/user-flow.md) and [frontend stack update](design/frontend-stack-update.md).
+In local development, Vite proxies React's `/api` requests to FastAPI. FastAPI checks the session and validates inputs before SQLAlchemy writes to SQLite. Alembic handles migrations.
+
+The [Day 2 database diagram](design/database-diagram.md) shows how the records connect. A normalized phone identifies one member. The signup source and referral belong to separate records, so the source stays the same when staff verify a referral. A referral follows one qualifying survey application. The CSV importer uses legacy IDs to match referrals, and the Meta endpoint uses each lead's ID to recognise a repeat delivery. See the [user flow](design/user-flow.md) and [frontend stack update](design/frontend-stack-update.md).
 
 ## 7. API endpoints
 
@@ -130,7 +132,7 @@ An invalid payload returns `422` with a validation error. A new lead from an exi
 - Source and referral credit are separate. A new member can come from Instagram and separately name a friend who referred them. A personal referral link identifies its owner automatically. A typed name is recorded for staff review.
 - The link the member uses at signup gets the acquisition credit. New members without a valid tagged link choose how they heard about ViewBox. Returning members keep their original source and are matched by their normalized phone number.
 - The local demo displays the OTP in the browser. Use demo contact details while testing.
-- Eligibility previews leave survey capacity available. Applications reserve a spot only when approved. A flexible rule mismatch puts the member on the waitlist when every strict rule and operating limit is met.
+- Checking eligibility leaves the quota unchanged. A spot is reserved when an application is approved. A mismatch on a flexible rule leads to the waitlist if the member meets the strict rules and the survey is still accepting applications.
 - A completed survey starts a cool-off of three calendar months. Staff record Fit and Completed separately. Source totals count each member once per milestone, even when that member has several applications.
 - The CSV import normalizes known formats and source aliases, preserves annual income bands, and reports uncertain or unusable values. A preview writes nothing. Existing phones retain their original attribution. Legacy referral IDs are used only when the match is unambiguous.
 
