@@ -52,6 +52,7 @@ function SurveyCard({ survey }) {
 }
 
 export function MemberSurveys({ embedded = false }) {
+  const Heading = embedded ? "h2" : "h1";
   const resource = useResource("/member/surveys");
   const live = (resource.data || []).filter((survey) => survey.live);
   const past = (resource.data || []).filter(
@@ -65,12 +66,12 @@ export function MemberSurveys({ embedded = false }) {
       <div className="workspace-heading">
         <div>
           {!embedded && <p className="eyebrow">MEMBER SURVEYS</p>}
-          <h1
+          <Heading
             className={embedded ? "section-title" : "page-title"}
             id="survey-list-title"
           >
             Live surveys
-          </h1>
+          </Heading>
           <p className="muted">
             Check your eligibility before you apply. Interest matches are
             highlighted.
@@ -98,8 +99,9 @@ export function MemberSurveys({ embedded = false }) {
               <div className="card empty-inline">
                 <h2>No live surveys right now</h2>
                 <p className="muted">
-                  Check back for new research. Your previous applications remain
-                  available below.
+                  Check back for new research.
+                  {past.length > 0 &&
+                    " Your previous applications remain available below."}
                 </p>
               </div>
             )}

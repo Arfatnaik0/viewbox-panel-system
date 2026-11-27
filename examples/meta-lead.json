@@ -1,0 +1,13 @@
+{
+  "id": "demo-lead-001",
+  "form_id": "demo-form-001",
+  "campaign_id": "demo-campaign-001",
+  "ad_id": "demo-ad-001",
+  "created_time": "2025-10-27T12:00:00Z",
+  "field_data": [
+    { "name": "full_name", "values": ["Casey Demo"] },
+    { "name": "phone_number", "values": ["+919000104003"] },
+    { "name": "city", "values": ["Pune"] },
+    { "name": "email", "values": ["casey@example.test"] }
+  ]
+}

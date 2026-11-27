@@ -10,14 +10,22 @@ export async function api(
   path,
   { method = "GET", body, signal, responseType = "json" } = {},
 ) {
+  const multipart = body instanceof FormData;
   let response;
   try {
     response = await fetch(`/api${path}`, {
       method,
       credentials: "include",
       headers:
-        body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+        body === undefined || multipart
+          ? undefined
+          : { "Content-Type": "application/json" },
+      body:
+        body === undefined
+          ? undefined
+          : multipart
+            ? body
+            : JSON.stringify(body),
       signal,
     });
   } catch (error) {

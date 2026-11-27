@@ -1,6 +1,6 @@
 from alembic import context
 
-from app import models, survey_models
+from app import legacy_models, meta_models, models, survey_models
 from app.db import Base, database_url, make_engine
 
 target_metadata = Base.metadata

@@ -1,0 +1,4 @@
+member_id,name,phone,email,gender,date_of_birth,city,income_range,interests,source,referred_by,joined_on,last_survey_completed_on
+DEMO-01,Rowan Demo,90001 04001,rowan@example.test,F,26/08/1993,MUMBAI,3L-6L,Technology;Shopping,whatsapp mumbai,,01/06/2025,
+DEMO-02,Avery Demo,09000104002,avery@example.test,M,1996/04/12,pune,10L-20L,Travel,insta,DEMO-01,2025-06-02,
+DEMO-03,Unusable Row,123,,Female,not a date,Pune,,Travel,Website,,2025-06-02,

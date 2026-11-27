@@ -5,11 +5,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, Field, StringConstraints, model_validator
-from sqlalchemy import String, case, cast, distinct, func, or_, select
+from sqlalchemy import String, case, cast, delete, distinct, func, or_, select
 from sqlalchemy.orm import Session, aliased, selectinload
 
 from .db import lock_for_write
 from .dependencies import CurrentMember, CurrentStaff, Database
+from .legacy_models import LegacyReferralKey
 from .models import Member, Referral, Source
 from .schemas import SourceSummary
 from .security import api_error, now_utc
@@ -367,6 +368,8 @@ def fail_referral(referral_id: int, data: ReferralFailure, db: Database, _staff:
         raise api_error(409, "referral_closed", "This referral is already closed.")
     referral.stage = "failed"
     referral.failure_reason = data.reason
+    # A staff decision supersedes the automatic legacy-ID attribution.
+    db.execute(delete(LegacyReferralKey).where(LegacyReferralKey.referral_id == referral.id))
     db.commit()
 
 
